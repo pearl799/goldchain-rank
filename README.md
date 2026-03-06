@@ -1,6 +1,6 @@
 # Goldchain Rank — OpenClaw Plugin
 
-Token usage tracker for the [Goldchain](https://goldchain.xyz) leaderboard.
+Token usage tracker for the [Goldchain](https://goldchain.club) leaderboard.
 
 Automatically captures LLM token usage (model, provider, token counts) from OpenClaw and reports it to the Goldchain ranking service. **No conversation content is ever collected** — only usage metadata. Code is open source for full transparency.
 
@@ -13,7 +13,7 @@ git clone https://github.com/pearl799/goldchain-rank.git ~/.openclaw/extensions/
 # Configure credentials
 cd ~/.openclaw/extensions/goldchain-rank
 cp config.example.json config.json
-# Edit config.json with your user_id and secret_key from goldchain.xyz
+# Edit config.json with your user_id and secret_key from goldchain.club
 chmod 600 config.json
 
 # Restart OpenClaw to load the plugin
@@ -28,11 +28,11 @@ Create `config.json` in the plugin directory:
 {
   "user_id": "gc_xxxxx",
   "secret_key": "sk_xxxxx",
-  "api_base_url": "https://api.goldchain.xyz"
+  "api_base_url": "https://api.goldchain.club"
 }
 ```
 
-Get your credentials by registering at [goldchain.xyz](https://goldchain.xyz).
+Get your credentials by registering at [goldchain.club](https://goldchain.club).
 
 ## Commands
 

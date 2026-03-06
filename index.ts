@@ -34,7 +34,7 @@ function loadConfig(pluginDir: string): GoldchainConfig | null {
     return {
       user_id: parsed.user_id,
       secret_key: parsed.secret_key,
-      api_base_url: parsed.api_base_url || "https://api.goldchain.xyz",
+      api_base_url: parsed.api_base_url || "https://api.goldchain.club",
     };
   } catch {
     return null;
