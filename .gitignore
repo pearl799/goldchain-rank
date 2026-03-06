@@ -1,0 +1,11 @@
+# User credentials — NEVER commit
+config.json
+
+# Runtime data
+queue.jsonl
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
