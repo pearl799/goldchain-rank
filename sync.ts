@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { sign } from "./crypto.ts";
 import { Queue } from "./queue.ts";
 import type {
   GoldchainConfig,
   ReportPayload,
   ReportResponse,
   SyncState,
-  UsageRecord,
 } from "./types.ts";
 
 const CLIENT_VERSION = "1.0.0";
@@ -78,7 +76,7 @@ export class Syncer {
     }
   }
 
-  /** Flush the queue: take up to BATCH_SIZE records, sign, and POST. */
+  /** Flush the queue: take up to BATCH_SIZE records and POST with Bearer auth. */
   async flush(): Promise<{ ok: boolean; accepted?: number; error?: string }> {
     // Clear debounce timer
     if (this.debounceTimer) {
@@ -101,20 +99,10 @@ export class Syncer {
     }
 
     const payload: ReportPayload = {
-      user_id: this.config.user_id,
       batch_id: randomUUID(),
       events: records,
       client_version: CLIENT_VERSION,
     };
-
-    const payloadJson = JSON.stringify(payload);
-    const timestampMs = String(Date.now());
-    const signature = sign(
-      this.config.secret_key,
-      this.config.user_id,
-      timestampMs,
-      payloadJson,
-    );
 
     const url = `${this.config.api_base_url}/v1/usage/report`;
 
@@ -123,11 +111,9 @@ export class Syncer {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Goldchain-Signature": signature,
-          "X-Goldchain-User": this.config.user_id,
-          "X-Goldchain-Timestamp": timestampMs,
+          "Authorization": `Bearer ${this.config.token}`,
         },
-        body: payloadJson,
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(15_000),
       });
 

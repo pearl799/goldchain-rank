@@ -1,9 +1,14 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { Queue } from "./queue.ts";
 import { Syncer } from "./sync.ts";
 import { trackUsage } from "./tracker.ts";
-import type { GoldchainConfig, RankResponse, LeaderboardResponse } from "./types.ts";
+import type {
+  GoldchainConfig,
+  VerifyResponse,
+  RankResponse,
+  LeaderboardResponse,
+} from "./types.ts";
 
 // Types from OpenClaw plugin SDK (referenced structurally, not imported)
 type PluginApi = {
@@ -24,20 +29,35 @@ type PluginApi = {
   on: (hookName: string, handler: (event: any, ctx: any) => void | Promise<void>, opts?: { priority?: number }) => void;
 };
 
+const DEFAULT_API_BASE = "https://api.goldchain.club";
+
 function loadConfig(pluginDir: string): GoldchainConfig | null {
   const configPath = join(pluginDir, "config.json");
   if (!existsSync(configPath)) return null;
   try {
     const raw = readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(raw);
-    if (!parsed.user_id || !parsed.secret_key) return null;
+    if (!parsed.token) return null;
     return {
-      user_id: parsed.user_id,
-      secret_key: parsed.secret_key,
-      api_base_url: parsed.api_base_url || "https://api.goldchain.club",
+      token: parsed.token,
+      api_base_url: parsed.api_base_url || DEFAULT_API_BASE,
     };
   } catch {
     return null;
+  }
+}
+
+function saveConfig(pluginDir: string, token: string, apiBase?: string): void {
+  const configPath = join(pluginDir, "config.json");
+  const data = {
+    token,
+    api_base_url: apiBase || DEFAULT_API_BASE,
+  };
+  writeFileSync(configPath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  try {
+    chmodSync(configPath, 0o600);
+  } catch {
+    // chmod may fail on some systems, not critical
   }
 }
 
@@ -56,46 +76,99 @@ const plugin = {
   version: "1.0.0",
 
   register(api: PluginApi) {
-    // Resolve plugin directory from this file's location
     const pluginDir = join(new URL(".", import.meta.url).pathname);
-    const config = loadConfig(pluginDir);
+    let config = loadConfig(pluginDir);
 
-    if (!config) {
-      api.logger.warn(
-        "Goldchain Rank: missing or invalid config.json (need user_id + secret_key). Plugin disabled.",
-      );
-      return;
+    // Shared mutable state — initialized after login
+    let queue: Queue | null = null;
+    let syncer: Syncer | null = null;
+
+    function activate() {
+      if (!config) return;
+      const queuePath = join(pluginDir, "queue.jsonl");
+      queue = new Queue(queuePath);
+      syncer = new Syncer(config, queue, api.logger);
+      api.logger.info("Goldchain Rank: active and tracking usage.");
     }
 
-    const queuePath = join(pluginDir, "queue.jsonl");
-    const queue = new Queue(queuePath);
-    const syncer = new Syncer(config, queue, api.logger);
-
-    api.logger.info(`Goldchain Rank: active for user ${config.user_id}`);
+    // If already configured, start immediately
+    if (config) {
+      activate();
+    } else {
+      api.logger.info(
+        "Goldchain Rank: no token configured. Use /goldchain login <token> to get started.",
+      );
+    }
 
     // ─── Core hook: capture LLM usage (no conversation content) ───
     api.on("llm_output", (event, _ctx) => {
-      trackUsage(event, queue, syncer, () => syncer.state.paused);
+      if (queue && syncer) {
+        trackUsage(event, queue, syncer, () => syncer!.state.paused);
+      }
     });
 
     // ─── Register /goldchain command ───
     api.registerCommand({
       name: "goldchain",
-      description: "Goldchain Rank — status, sync, rank, pause, resume, leaderboard",
+      description: "Goldchain Rank — login, status, sync, rank, pause, resume, leaderboard",
       acceptsArgs: true,
       requireAuth: false,
       handler: async (ctx) => {
-        const sub = (ctx.args ?? "").trim().split(/\s+/)[0].toLowerCase();
+        const args = (ctx.args ?? "").trim();
+        const sub = args.split(/\s+/)[0].toLowerCase();
 
         switch (sub) {
+          // ─── Login: verify token with server, then save ───
+          case "login": {
+            const token = args.slice(5).trim(); // strip "login "
+            if (!token) {
+              return {
+                text: "Usage: /goldchain login <your-api-token>\nGet your token at https://goldchain.club",
+              };
+            }
+
+            try {
+              const base = config?.api_base_url || DEFAULT_API_BASE;
+              const res = await fetch(`${base}/v1/auth/verify`, {
+                headers: { Authorization: `Bearer ${token}` },
+                signal: AbortSignal.timeout(10_000),
+              });
+
+              if (!res.ok) {
+                return { text: `Login failed: invalid token (HTTP ${res.status})` };
+              }
+
+              const data: VerifyResponse = await res.json();
+              if (!data.valid) {
+                return { text: `Login failed: ${data.message || "invalid token"}` };
+              }
+
+              // Save token and activate
+              saveConfig(pluginDir, token, config?.api_base_url);
+              config = { token, api_base_url: config?.api_base_url || DEFAULT_API_BASE };
+              activate();
+
+              return {
+                text: `Login successful! Welcome, ${data.display_name}.\nGoldchain Rank is now active. Restart OpenClaw to begin tracking.`,
+              };
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              return { text: `Login failed: ${msg}` };
+            }
+          }
+
           case "status":
           case "": {
+            if (!syncer || !queue) {
+              return {
+                text: "Goldchain Rank: not configured.\nUse /goldchain login <token> to get started.",
+              };
+            }
             const size = queue.size();
             const oldest = queue.oldestTimestamp();
             const { consecutive_failures, last_sync_at, paused } = syncer.state;
             const lines = [
               `Goldchain Rank: ${paused ? "PAUSED" : "Active"}`,
-              `User: ${config.user_id}`,
               `Queue: ${size} events`,
               `Last sync: ${formatTimeSince(last_sync_at)}`,
             ];
@@ -106,6 +179,9 @@ const plugin = {
           }
 
           case "sync": {
+            if (!syncer) {
+              return { text: "Not configured. Use /goldchain login <token> first." };
+            }
             const result = await syncer.forceSync();
             if (result.ok) {
               return { text: `Synced ${result.accepted ?? 0} events successfully.` };
@@ -114,20 +190,32 @@ const plugin = {
           }
 
           case "pause": {
+            if (!syncer) {
+              return { text: "Not configured. Use /goldchain login <token> first." };
+            }
             syncer.state.paused = true;
             return { text: "Goldchain Rank: data collection paused." };
           }
 
           case "resume": {
+            if (!syncer) {
+              return { text: "Not configured. Use /goldchain login <token> first." };
+            }
             syncer.state.paused = false;
             syncer.state.consecutive_failures = 0;
             return { text: "Goldchain Rank: data collection resumed." };
           }
 
           case "rank": {
+            if (!config) {
+              return { text: "Not configured. Use /goldchain login <token> first." };
+            }
             try {
-              const url = `${config.api_base_url}/v1/users/${config.user_id}/rank`;
-              const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+              const url = `${config.api_base_url}/v1/users/me/rank`;
+              const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${config.token}` },
+                signal: AbortSignal.timeout(10_000),
+              });
               if (!res.ok) return { text: `Failed to fetch rank: HTTP ${res.status}` };
               const data: RankResponse = await res.json();
               return {
@@ -147,8 +235,9 @@ const plugin = {
 
           case "leaderboard":
           case "lb": {
+            const base = config?.api_base_url || DEFAULT_API_BASE;
             try {
-              const url = `${config.api_base_url}/v1/leaderboard`;
+              const url = `${base}/v1/leaderboard`;
               const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
               if (!res.ok) return { text: `Failed to fetch leaderboard: HTTP ${res.status}` };
               const data: LeaderboardResponse = await res.json();
@@ -163,16 +252,33 @@ const plugin = {
             }
           }
 
+          case "logout": {
+            if (!config) {
+              return { text: "Not logged in." };
+            }
+            if (syncer) syncer.destroy();
+            syncer = null;
+            queue = null;
+            config = null;
+            const configPath = join(pluginDir, "config.json");
+            try {
+              writeFileSync(configPath, "{}\n", "utf-8");
+            } catch { /* ignore */ }
+            return { text: "Logged out. Token removed." };
+          }
+
           default:
             return {
               text: [
                 "Usage: /goldchain <command>",
-                "  status       — Show plugin status",
-                "  sync         — Force sync pending events",
-                "  pause        — Pause data collection",
-                "  resume       — Resume data collection",
-                "  rank         — Show your current rank",
-                "  leaderboard  — Show top 20 leaderboard",
+                "  login <token> — Bind your Goldchain account",
+                "  logout        — Remove token and stop tracking",
+                "  status        — Show plugin status",
+                "  sync          — Force sync pending events",
+                "  pause         — Pause data collection",
+                "  resume        — Resume data collection",
+                "  rank          — Show your current rank",
+                "  leaderboard   — Show top 20 leaderboard",
               ].join("\n"),
             };
         }

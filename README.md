@@ -10,34 +10,25 @@ Automatically captures LLM token usage (model, provider, token counts) from Open
 # Clone to OpenClaw global extensions directory
 git clone https://github.com/pearl799/goldchain-rank.git ~/.openclaw/extensions/goldchain-rank
 
-# Configure credentials
-cd ~/.openclaw/extensions/goldchain-rank
-cp config.example.json config.json
-# Edit config.json with your user_id and secret_key from goldchain.club
-chmod 600 config.json
-
 # Restart OpenClaw to load the plugin
 openclaw restart
 ```
 
-## Configuration
+## Setup
 
-Create `config.json` in the plugin directory:
-
-```json
-{
-  "user_id": "gc_xxxxx",
-  "secret_key": "sk_xxxxx",
-  "api_base_url": "https://api.goldchain.club"
-}
-```
-
-Get your credentials by registering at [goldchain.club](https://goldchain.club).
+1. Register at [goldchain.club](https://goldchain.club) and copy your API Token
+2. In OpenClaw, run:
+   ```
+   /goldchain login gc_sk_your_token_here
+   ```
+3. Done! The plugin will verify your token and start tracking automatically.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
+| `/goldchain login <token>` | Bind your Goldchain account |
+| `/goldchain logout` | Remove token and stop tracking |
 | `/goldchain status` | Show plugin status, queue length, last sync time |
 | `/goldchain sync` | Force sync all pending events immediately |
 | `/goldchain pause` | Pause data collection |
@@ -65,7 +56,7 @@ Each LLM call records **only**:
 1. Plugin listens to OpenClaw's `llm_output` lifecycle event
 2. Extracts only usage metadata (ignores `assistantTexts`)
 3. Writes records to a local JSONL queue (`queue.jsonl`)
-4. Batch uploads to Goldchain API with HMAC-SHA256 signed requests
+4. Batch uploads to Goldchain API with Bearer token authentication
 5. Three-layer sync trigger: 10s debounce, 60s max staleness, 50 event batch limit
 
 ## Uninstall

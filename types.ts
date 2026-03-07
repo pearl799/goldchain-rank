@@ -14,10 +14,9 @@ export interface UsageRecord {
   timestamp: string; // ISO 8601
 }
 
-/** User credentials loaded from config.json. */
+/** User config loaded from config.json. */
 export interface GoldchainConfig {
-  user_id: string;
-  secret_key: string;
+  token: string;
   api_base_url: string;
 }
 
@@ -30,7 +29,6 @@ export interface SyncState {
 
 /** Batch upload payload sent to the server. */
 export interface ReportPayload {
-  user_id: string;
   batch_id: string;
   events: UsageRecord[];
   client_version: string;
@@ -46,7 +44,15 @@ export interface ReportResponse {
   message?: string;
 }
 
-/** Server response from /v1/users/:id/rank. */
+/** Server response from /v1/auth/verify. */
+export interface VerifyResponse {
+  valid: boolean;
+  user_id?: string;
+  display_name?: string;
+  message?: string;
+}
+
+/** Server response from /v1/users/me/rank. */
 export interface RankResponse {
   user_id: string;
   display_name: string;

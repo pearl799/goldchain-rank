@@ -1,5 +1,4 @@
 {
-  "user_id": "gc_xxxxx",
-  "secret_key": "sk_xxxxx",
+  "token": "gc_sk_your_token_here",
   "api_base_url": "https://api.goldchain.club"
 }
