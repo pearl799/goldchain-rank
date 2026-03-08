@@ -29,7 +29,7 @@ type PluginApi = {
   on: (hookName: string, handler: (event: any, ctx: any) => void | Promise<void>, opts?: { priority?: number }) => void;
 };
 
-const DEFAULT_API_BASE = "https://api.goldchain.club";
+const DEFAULT_API_BASE = "https://www.goldchain.club/api";
 
 function loadConfig(pluginDir: string): GoldchainConfig | null {
   const configPath = join(pluginDir, "config.json");

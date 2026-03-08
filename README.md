@@ -56,7 +56,7 @@ Each LLM call records **only**:
 1. Plugin listens to OpenClaw's `llm_output` lifecycle event
 2. Extracts only usage metadata (ignores `assistantTexts`)
 3. Writes records to a local JSONL queue (`queue.jsonl`)
-4. Batch uploads to Goldchain API with Bearer token authentication
+4. Batch uploads to Goldchain API (`www.goldchain.club/api`) with Bearer token authentication
 5. Three-layer sync trigger: 10s debounce, 60s max staleness, 50 event batch limit
 
 ## Uninstall
