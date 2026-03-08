@@ -1,5 +1,6 @@
 {
   "id": "goldchain-rank",
   "name": "Goldchain Rank",
-  "description": "Token usage tracker for Goldchain leaderboard. Only collects model/provider/usage — never reads conversation content."
+  "description": "Token usage tracker for Goldchain leaderboard. Only collects model/provider/usage — never reads conversation content.",
+  "configSchema": {}
 }

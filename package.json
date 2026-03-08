@@ -1,5 +1,5 @@
 {
-  "name": "@goldchain/rank",
+  "name": "goldchain-rank",
   "version": "1.0.0",
   "description": "Token usage tracker for Goldchain leaderboard",
   "type": "module",
